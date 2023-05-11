@@ -1,5 +1,6 @@
 "use strict";
 
+const { response } = require("express");
 const db = require("../db");
 const { BadRequestError, NotFoundError } = require("../expressError");
 const { sqlForPartialUpdate } = require("../helpers/sql");
@@ -18,26 +19,21 @@ class Company {
 
   static async create({ handle, name, description, numEmployees, logoUrl }) {
     const duplicateCheck = await db.query(
-          `SELECT handle
+      `SELECT handle
            FROM companies
            WHERE handle = $1`,
-        [handle]);
+      [handle]
+    );
 
     if (duplicateCheck.rows[0])
       throw new BadRequestError(`Duplicate company: ${handle}`);
 
     const result = await db.query(
-          `INSERT INTO companies
+      `INSERT INTO companies
            (handle, name, description, num_employees, logo_url)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING handle, name, description, num_employees AS "numEmployees", logo_url AS "logoUrl"`,
-        [
-          handle,
-          name,
-          description,
-          numEmployees,
-          logoUrl,
-        ],
+      [handle, name, description, numEmployees, logoUrl]
     );
     const company = result.rows[0];
 
@@ -49,15 +45,55 @@ class Company {
    * Returns [{ handle, name, description, numEmployees, logoUrl }, ...]
    * */
 
-  static async findAll() {
-    const companiesRes = await db.query(
-          `SELECT handle,
-                  name,
-                  description,
-                  num_employees AS "numEmployees",
-                  logo_url AS "logoUrl"
-           FROM companies
-           ORDER BY name`);
+  static async findAll(filters = {}) {
+    // start with a base query to add to depending on the contents of the filters
+    let baseQuery = `SELECT handle,
+                            name,
+                            description,
+                            num_employees AS "numEmployees",
+                            logo_url AS "logoUrl"
+                     FROM companies`;
+    // declare empty arrays to push the values of the where expressions and thier corresponding query values;
+    // for example "WHERE name = $1" would be pushed to whereClauses and the company name say "Amazon" would be
+    // pushed to the queryValues array, this defends against SQL injection.
+    let whereClauses = [];
+    let queryValues = [];
+
+    // destructure the needed variables from the filters object
+    const { name, minEmployees, maxEmployees } = filters;
+
+    // checks if minEmployees is greater than max and throws error if so
+    if (minEmployees > maxEmployees) {
+      throw new BadRequestError(
+        "Maximum employees must be greater than minimum"
+      );
+    }
+    //  if the name, minEmployees and maxEmployees varibles are present in the filters object
+    //  their values are now pushed to the corresponding arrays declared above
+    if (name) {
+      queryValues.push(`%${name}%`);
+      whereClauses.push(`name ILIKE $${queryValues.length}`);
+    }
+
+    if (minEmployees !== undefined) {
+      queryValues.push(minEmployees);
+      whereClauses.push(`num_employees >= $${queryValues.length}`);
+    }
+
+    if (maxEmployees !== undefined) {
+      queryValues.push(maxEmployees);
+      whereClauses.push(`num_employees <= $${queryValues.length}`);
+    }
+
+    // if values have been pushed to the whereClauses array this builds upon the baseQuery string
+    // by joining it with each WHERE clause on an AND
+    if (whereClauses.length > 0) {
+      baseQuery += " WHERE " + whereClauses.join(" AND ");
+    }
+    // complete the query string, await the db and return the response
+    baseQuery += " ORDER BY name ";
+    const companiesRes = await db.query(baseQuery, queryValues);
+
     return companiesRes.rows;
   }
 
@@ -71,14 +107,15 @@ class Company {
 
   static async get(handle) {
     const companyRes = await db.query(
-          `SELECT handle,
+      `SELECT handle,
                   name,
                   description,
                   num_employees AS "numEmployees",
                   logo_url AS "logoUrl"
            FROM companies
            WHERE handle = $1`,
-        [handle]);
+      [handle]
+    );
 
     const company = companyRes.rows[0];
 
@@ -100,12 +137,10 @@ class Company {
    */
 
   static async update(handle, data) {
-    const { setCols, values } = sqlForPartialUpdate(
-        data,
-        {
-          numEmployees: "num_employees",
-          logoUrl: "logo_url",
-        });
+    const { setCols, values } = sqlForPartialUpdate(data, {
+      numEmployees: "num_employees",
+      logoUrl: "logo_url",
+    });
     const handleVarIdx = "$" + (values.length + 1);
 
     const querySql = `UPDATE companies 
@@ -131,16 +166,16 @@ class Company {
 
   static async remove(handle) {
     const result = await db.query(
-          `DELETE
+      `DELETE
            FROM companies
            WHERE handle = $1
            RETURNING handle`,
-        [handle]);
+      [handle]
+    );
     const company = result.rows[0];
 
     if (!company) throw new NotFoundError(`No company: ${handle}`);
   }
 }
-
 
 module.exports = Company;
