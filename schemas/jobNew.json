@@ -8,7 +8,7 @@
         "minLength": 1,
         "maxLength": 50
       },
-      "companyHandle": {
+      "company_handle": {
         "type": "string",
         "minLength": 1,
         "maxLength": 30
@@ -25,7 +25,8 @@
     "additionalProperties": false,
     "required": [
       "title",
-      "companyHandle"
+      "company_handle"
+     
     ]
   }
   
