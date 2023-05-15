@@ -5,15 +5,19 @@
 const jsonschema = require("jsonschema");
 
 const express = require("express");
-const { ensureLoggedIn, ensureAdmin, ensureUserOrAdmin } = require("../middleware/auth");
+const {
+  ensureLoggedIn,
+  ensureAdmin,
+  ensureUserOrAdmin,
+} = require("../middleware/auth");
 const { BadRequestError } = require("../expressError");
 const User = require("../models/user");
 const { createToken } = require("../helpers/tokens");
 const userNewSchema = require("../schemas/userNew.json");
 const userUpdateSchema = require("../schemas/userUpdate.json");
+const Jobs = require("../models/job");
 
 const router = express.Router();
-
 
 /** POST / { user }  => { user, token }
  *
@@ -27,11 +31,11 @@ const router = express.Router();
  * Authorization required: login
  **/
 
-router.post("/", ensureLoggedIn ,async function (req, res, next) {
+router.post("/", ensureLoggedIn, async function (req, res, next) {
   try {
     const validator = jsonschema.validate(req.body, userNewSchema);
     if (!validator.valid) {
-      const errs = validator.errors.map(e => e.stack);
+      const errs = validator.errors.map((e) => e.stack);
       throw new BadRequestError(errs);
     }
 
@@ -43,6 +47,23 @@ router.post("/", ensureLoggedIn ,async function (req, res, next) {
   }
 });
 
+// allows user to apply for a job, returns {applied: {job_id}}
+// authorization required: logged in or admin
+
+router.post(
+  "/:username/jobs/:id",
+  ensureUserOrAdmin,
+  async function (req, res, next) {
+    try {
+      const jobID = req.params.id;
+      const username = req.params.username;
+      await User.applyJob(username, jobID);
+      return res.json({ applied: jobID });
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
 
 /** GET / => { users: [ {username, firstName, lastName, email }, ... ] }
  *
@@ -60,7 +81,6 @@ router.get("/", ensureAdmin, async function (req, res, next) {
   }
 });
 
-
 /** GET /[username] => { user }
  *
  * Returns { username, firstName, lastName, isAdmin }
@@ -77,7 +97,6 @@ router.get("/:username", ensureUserOrAdmin, async function (req, res, next) {
   }
 });
 
-
 /** PATCH /[username] { user } => { user }
  *
  * Data can include:
@@ -92,7 +111,7 @@ router.patch("/:username", ensureUserOrAdmin, async function (req, res, next) {
   try {
     const validator = jsonschema.validate(req.body, userUpdateSchema);
     if (!validator.valid) {
-      const errs = validator.errors.map(e => e.stack);
+      const errs = validator.errors.map((e) => e.stack);
       throw new BadRequestError(errs);
     }
 
@@ -102,7 +121,6 @@ router.patch("/:username", ensureUserOrAdmin, async function (req, res, next) {
     return next(err);
   }
 });
-
 
 /** DELETE /[username]  =>  { deleted: username }
  *
@@ -117,6 +135,5 @@ router.delete("/:username", ensureUserOrAdmin, async function (req, res, next) {
     return next(err);
   }
 });
-
 
 module.exports = router;

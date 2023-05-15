@@ -12,6 +12,7 @@ const {
   commonBeforeEach,
   commonAfterEach,
   commonAfterAll,
+  testJobIds,
 } = require("./_testCommon");
 
 beforeAll(commonBeforeAll);
@@ -140,6 +141,7 @@ describe("get", function () {
       lastName: "U1L",
       email: "u1@email.com",
       isAdmin: false,
+      jobs: {job_id: testJobIds[0]}
     });
   });
 
@@ -207,6 +209,27 @@ describe("update", function () {
       expect(err instanceof BadRequestError).toBeTruthy();
     }
   });
+});
+
+
+describe("apply for job", function () {
+  test("works", async function () {
+    await User.applyJob("u1", testJobIds[1]);
+    const res = await db.query(
+      `
+        SELECT * FROM applications WHERE job_id = $1
+      `,
+      [testJobIds[1]]
+    );
+    
+    expect(res.rows).toEqual([
+      {
+        job_id: testJobIds[1],
+        username: "u1",
+      },
+    ]);
+  });
+ 
 });
 
 /************************************** remove */
